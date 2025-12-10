@@ -10,8 +10,8 @@ from io import BytesIO
 
 # --- 設定 ---
 st.set_page_config(
-    page_title="勤怠管理アプリ (本番環境)",
-    page_icon="🏢",
+    page_title="勤怠管理アプリ",
+    page_icon="⏰",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -44,7 +44,6 @@ def get_today_str():
     return datetime.date.today().strftime("%Y-%m-%d")
 
 # --- データベース操作関数 ---
-
 def get_employee(name):
     docs = db.collection('employees').where('name', '==', name).stream()
     for doc in docs:
@@ -77,7 +76,6 @@ def get_admin(username):
     return None
 
 def get_attendance(employee_id, date_str):
-    """特定の従業員の指定日の勤怠を取得"""
     docs = db.collection('attendance')\
              .where('employee_id', '==', employee_id)\
              .where('date', '==', date_str)\
@@ -88,31 +86,97 @@ def get_attendance(employee_id, date_str):
         return data
     return None
 
-# --- UIコンポーネント ---
+# --- UIコンポーネント（ポップなデザイン設定） ---
 def style_setup():
     st.markdown("""
     <style>
+        /* Google Fonts: M PLUS Rounded 1c (丸ゴシック) をインポート */
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700&display=swap');
+
+        /* 全体のフォント適用 */
+        html, body, [class*="css"] {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+        }
+
+        /* タイトルの装飾 */
+        h1 {
+            color: #FF8BA7; /* ポップなピンク */
+            text-shadow: 2px 2px 0px #FFF0F5;
+        }
+        h2, h3 {
+            color: #555;
+        }
+
+        /* ボタンの共通スタイル */
         .stButton>button {
             width: 100%;
-            height: 3em;
-            font-size: 1.2em;
+            height: 3.5em;
+            font-size: 1.3em;
             font-weight: bold;
-            border-radius: 10px;
+            border-radius: 50px; /* 丸っこく */
+            border: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); /* 影をつける */
+            transition: all 0.2s ease;
         }
+        .stButton>button:hover {
+            transform: translateY(-2px); /* ホバーで少し浮く */
+            box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+        }
+        .stButton>button:active {
+            transform: translateY(1px); /* 押すと沈む */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* カラムごとのボタン色分け (Streamlitの構造に依存したハック) */
+        
+        /* 1番目のカラム（出勤・ログインなど）: ミントグリーン */
         div[data-testid="column"]:nth-of-type(1) .stButton>button {
-            background-color: #E2F0CB; 
-            color: #4A4A4A;
+            background-color: #A0E7E5; 
+            color: #333;
         }
+        
+        /* 2番目のカラム（退勤など）: サーモンピンク */
         div[data-testid="column"]:nth-of-type(2) .stButton>button {
-            background-color: #FFDAC1; 
-            color: #4A4A4A;
+            background-color: #FFAEBC; 
+            color: #333;
         }
+
+        /* 3番目のカラム（休憩開始）: レモンイエロー */
+        div[data-testid="column"]:nth-of-type(3) .stButton>button {
+            background-color: #FBE7C6; 
+            color: #333;
+        }
+
+        /* 4番目のカラム（休憩終了）: パステルブルー */
+        div[data-testid="column"]:nth-of-type(4) .stButton>button {
+            background-color: #B4F8C8; 
+            color: #333;
+        }
+
+        /* 指標（Metric）のカード化 */
+        div[data-testid="stMetric"] {
+            background-color: #FFF;
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            text-align: center;
+            border: 2px solid #F0F0F0;
+        }
+        
+        /* 入力フォームの角丸 */
+        .stTextInput>div>div>input {
+            border-radius: 20px;
+        }
+        .stSelectbox>div>div>div {
+            border-radius: 20px;
+        }
+
     </style>
     """, unsafe_allow_html=True)
 
 # --- 画面: 認証 ---
 def login_screen():
-    st.title("勤怠管理アプリ (本番環境) 🏢")
+    st.title("勤怠管理アプリ 🍩") # アイコン変更
     
     admins = db.collection('admins').limit(1).stream()
     if not list(admins):
@@ -123,14 +187,14 @@ def login_screen():
                 "username": "admin",
                 "password": hashed
             })
-            st.success("作成しました。ID: admin / Pass: password でログインしてください。")
+            st.success("作成しました。")
             time.sleep(2)
             st.rerun()
 
-    tab1, tab2 = st.tabs(["スタッフ", "管理者"])
+    tab1, tab2 = st.tabs(["🐣 スタッフ", "🔧 管理者"]) # 絵文字追加
     
     with tab1:
-        st.header("はじめる")
+        st.header("さあ、はじめましょう！")
         employees = get_all_employees()
         if not employees:
             st.info("スタッフが登録されていません。")
@@ -139,35 +203,40 @@ def login_screen():
             selected_name = st.selectbox("お名前を選んでください", emp_names)
             pin = st.text_input("暗証番号 (4桁)", type="password", key="staff_pin", max_chars=4)
             
-            if st.button("スタート", key="staff_login_btn"):
-                emp_data = get_employee(selected_name)
-                if emp_data and emp_data.get('pin') == pin:
-                    st.session_state['logged_in'] = True
-                    st.session_state['user_role'] = 'staff'
-                    st.session_state['user_id'] = emp_data['id']
-                    st.session_state['user_name'] = selected_name
-                    st.rerun()
-                else:
-                    st.error("暗証番号が違います")
+            # レイアウト調整用
+            c1, c2, c3 = st.columns([1, 2, 1])
+            with c2:
+                if st.button("スタート ▶︎", key="staff_login_btn"):
+                    emp_data = get_employee(selected_name)
+                    if emp_data and emp_data.get('pin') == pin:
+                        st.session_state['logged_in'] = True
+                        st.session_state['user_role'] = 'staff'
+                        st.session_state['user_id'] = emp_data['id']
+                        st.session_state['user_name'] = selected_name
+                        st.rerun()
+                    else:
+                        st.error("暗証番号が違います🥺")
 
     with tab2:
         st.header("管理者ログイン")
         admin_user = st.text_input("管理者ID")
         admin_pass = st.text_input("パスワード", type="password")
         
-        if st.button("ログイン", key="admin_login_btn"):
-            admin_data = get_admin(admin_user)
-            if admin_data and admin_data['password'] == hash_password(admin_pass):
-                st.session_state['logged_in'] = True
-                st.session_state['user_role'] = 'admin'
-                st.session_state['user_name'] = admin_user
-                st.rerun()
-            else:
-                st.error("IDまたはパスワードが違います")
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            if st.button("ログイン", key="admin_login_btn"):
+                admin_data = get_admin(admin_user)
+                if admin_data and admin_data['password'] == hash_password(admin_pass):
+                    st.session_state['logged_in'] = True
+                    st.session_state['user_role'] = 'admin'
+                    st.session_state['user_name'] = admin_user
+                    st.rerun()
+                else:
+                    st.error("IDまたはパスワードが違います")
 
 # --- 画面: スタッフ機能 ---
 def staff_dashboard():
-    st.title(f"お疲れ様です、{st.session_state['user_name']}さん 🌿")
+    st.title(f"お疲れ様です、{st.session_state['user_name']}さん ✨")
     
     today = get_today_str()
     record = get_attendance(st.session_state['user_id'], today)
@@ -178,22 +247,27 @@ def staff_dashboard():
     break_end = record.get('break_end') if record else None
     doc_id = record.get('doc_id') if record else None
 
+    # ステータス表示
+    st.markdown("### 📅 今日のステータス")
     c1, c2 = st.columns(2)
     c1.metric("出勤時刻", clock_in if clock_in else "--:--")
     c2.metric("退勤時刻", clock_out if clock_out else "--:--")
 
-    st.divider()
+    st.write("") # スペース
 
     photo = st.camera_input("認証用写真撮影", label_visibility="collapsed")
     photo_b64 = None
     if photo:
         photo_b64 = base64.b64encode(photo.getvalue()).decode()
 
+    st.write("") # スペース
+
+    # ボタンレイアウト
     col1, col2 = st.columns(2)
     col3, col4 = st.columns(2)
     
     with col1:
-        if st.button("出勤"):
+        if st.button("☀️ 出勤"):
             if not photo_b64:
                 st.warning("写真を撮影してください📸")
             elif clock_in:
@@ -206,12 +280,12 @@ def staff_dashboard():
                     'photo': photo_b64,
                     'created_at': firestore.SERVER_TIMESTAMP
                 })
-                st.success("おはようございます！☀️")
-                time.sleep(1)
+                st.success("おはようございます！今日も頑張りましょう！🌈")
+                time.sleep(2)
                 st.rerun()
 
     with col2:
-        if st.button("退勤"):
+        if st.button("🌙 退勤"):
             if not clock_in:
                 st.warning("まだ出勤していません")
             elif clock_out:
@@ -220,12 +294,12 @@ def staff_dashboard():
                 db.collection('attendance').document(doc_id).update({
                     'clock_out': get_current_time_str()
                 })
-                st.success("お疲れ様でした！🌙")
-                time.sleep(1)
+                st.success("お疲れ様でした！ゆっくり休んでください🍵")
+                time.sleep(2)
                 st.rerun()
     
     with col3:
-        if st.button("休憩開始"):
+        if st.button("☕️ 休憩"):
             if doc_id and not break_start:
                 db.collection('attendance').document(doc_id).update({
                     'break_start': get_current_time_str()
@@ -235,7 +309,7 @@ def staff_dashboard():
                 st.warning("操作できません")
 
     with col4:
-        if st.button("休憩終了"):
+        if st.button("💪 再開"):
             if doc_id and break_start and not break_end:
                 db.collection('attendance').document(doc_id).update({
                     'break_end': get_current_time_str()
@@ -244,7 +318,9 @@ def staff_dashboard():
             else:
                 st.warning("操作できません")
 
-    with st.expander("今月の概算給与"):
+    st.divider()
+
+    with st.expander("💰 今月の概算給与"):
         emp = get_employee_by_id(st.session_state['user_id'])
         current_month = datetime.datetime.now().strftime("%Y-%m")
         start_m = current_month + "-01"
@@ -271,7 +347,7 @@ def staff_dashboard():
         else:
             est_pay = int(work_hours * emp['salary'])
             
-        if st.checkbox("金額を表示"):
+        if st.checkbox("金額を表示する"):
             st.metric("概算給与", f"{est_pay:,} 円")
         else:
             st.metric("概算給与", "***** 円")
@@ -326,7 +402,6 @@ def admin_dashboard():
         st.subheader("勤怠データの修正・追加")
         st.info("スタッフと日付を選択して、打刻時間を修正できます。")
 
-        # スタッフと日付の選択
         emps = get_all_employees()
         if emps:
             c1, c2 = st.columns(2)
@@ -334,15 +409,12 @@ def admin_dashboard():
             selected_date = c2.date_input("日付選択", value=datetime.date.today())
             date_str = str(selected_date)
 
-            # 既存データの取得
             record = get_attendance(selected_emp_id, date_str)
             
-            # デフォルト値の設定
             def_in = datetime.time(9, 0)
             def_out = datetime.time(18, 0)
             def_b_start = None
             def_b_end = None
-            
             doc_id = None
             
             if record:
@@ -359,7 +431,6 @@ def admin_dashboard():
             else:
                 st.warning("⚠️ この日のデータはありません。新規作成しますか？")
 
-            # 修正フォーム
             with st.form("edit_attendance"):
                 tc1, tc2 = st.columns(2)
                 new_in = tc1.time_input("出勤時間", value=def_in)
@@ -369,7 +440,6 @@ def admin_dashboard():
                 new_b_start = tc3.time_input("休憩開始", value=def_b_start)
                 new_b_end = tc4.time_input("休憩終了", value=def_b_end)
                 
-                # 保存処理
                 if st.form_submit_button("保存する"):
                     data = {
                         'clock_in': new_in.strftime("%H:%M"),
@@ -379,17 +449,13 @@ def admin_dashboard():
                         'date': date_str,
                         'employee_id': selected_emp_id
                     }
-                    
                     if doc_id:
-                        # 更新
                         db.collection('attendance').document(doc_id).update(data)
                         st.success("データを更新しました！")
                     else:
-                        # 新規作成（押し忘れ対応）
                         data['created_at'] = firestore.SERVER_TIMESTAMP
                         db.collection('attendance').add(data)
                         st.success("データを新規作成しました！")
-                    
                     time.sleep(1)
                     st.rerun()
 
@@ -407,7 +473,6 @@ def admin_dashboard():
             for doc in all_logs:
                 d = doc.to_dict()
                 log_date = datetime.datetime.strptime(d['date'], "%Y-%m-%d").date()
-                
                 if start_d <= log_date <= end_d:
                     emp = emp_map.get(d['employee_id'])
                     if emp:
