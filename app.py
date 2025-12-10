@@ -1,19 +1,16 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import calendar
-import hashlib
-import base64
-from io import BytesIO
 import time
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
-import json
+import base64
+from io import BytesIO
 
 # --- 設定 ---
 st.set_page_config(
-    page_title="勤怠管理アプリ(本番版)",
+    page_title="勤怠管理アプリ (本番環境)",
     page_icon="🏢",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -24,10 +21,7 @@ WORK_HOURS_PER_DAY = 8
 OVERTIME_RATE = 1.25
 
 # --- データベース接続 (Firestore) ---
-# シングルトンパターンでFirebase初期化（多重初期化防止）
 if not firebase_admin._apps:
-    # Streamlit CloudのSecretsから認証情報を読み込む想定
-    # ローカル開発時でも secrets.toml があれば動作します
     if "firebase" in st.secrets:
         cred_info = dict(st.secrets["firebase"])
         cred = credentials.Certificate(cred_info)
@@ -39,6 +33,7 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # --- ユーティリティ ---
+import hashlib
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -51,16 +46,14 @@ def get_today_str():
 # --- データベース操作関数 ---
 
 def get_employee(name):
-    """名前から従業員ドキュメントを取得"""
     docs = db.collection('employees').where('name', '==', name).stream()
     for doc in docs:
         data = doc.to_dict()
-        data['id'] = doc.id  # ドキュメントIDを含める
+        data['id'] = doc.id
         return data
     return None
 
 def get_employee_by_id(doc_id):
-    """IDから従業員情報を取得"""
     doc = db.collection('employees').document(doc_id).get()
     if doc.exists:
         data = doc.to_dict()
@@ -69,7 +62,6 @@ def get_employee_by_id(doc_id):
     return None
 
 def get_all_employees():
-    """全従業員を取得"""
     docs = db.collection('employees').stream()
     employees = []
     for doc in docs:
@@ -79,13 +71,12 @@ def get_all_employees():
     return employees
 
 def get_admin(username):
-    """管理者を取得"""
     docs = db.collection('admins').where('username', '==', username).stream()
     for doc in docs:
         return doc.to_dict()
     return None
 
-def get_today_attendance(employee_id, date_str):
+def get_attendance(employee_id, date_str):
     """特定の従業員の指定日の勤怠を取得"""
     docs = db.collection('attendance')\
              .where('employee_id', '==', employee_id)\
@@ -108,12 +99,10 @@ def style_setup():
             font-weight: bold;
             border-radius: 10px;
         }
-        /* 出勤ボタン */
         div[data-testid="column"]:nth-of-type(1) .stButton>button {
             background-color: #E2F0CB; 
             color: #4A4A4A;
         }
-        /* 退勤ボタン */
         div[data-testid="column"]:nth-of-type(2) .stButton>button {
             background-color: #FFDAC1; 
             color: #4A4A4A;
@@ -125,7 +114,6 @@ def style_setup():
 def login_screen():
     st.title("勤怠管理アプリ (本番環境) 🏢")
     
-    # 初期管理者チェック（Firestoreに管理者がいない場合作成）
     admins = db.collection('admins').limit(1).stream()
     if not list(admins):
         st.warning("管理者が登録されていません。初期アカウントを作成します。")
@@ -149,7 +137,6 @@ def login_screen():
         else:
             emp_names = [e['name'] for e in employees]
             selected_name = st.selectbox("お名前を選んでください", emp_names)
-            
             pin = st.text_input("暗証番号 (4桁)", type="password", key="staff_pin", max_chars=4)
             
             if st.button("スタート", key="staff_login_btn"):
@@ -183,7 +170,7 @@ def staff_dashboard():
     st.title(f"お疲れ様です、{st.session_state['user_name']}さん 🌿")
     
     today = get_today_str()
-    record = get_today_attendance(st.session_state['user_id'], today)
+    record = get_attendance(st.session_state['user_id'], today)
     
     clock_in = record.get('clock_in') if record else None
     clock_out = record.get('clock_out') if record else None
@@ -191,14 +178,12 @@ def staff_dashboard():
     break_end = record.get('break_end') if record else None
     doc_id = record.get('doc_id') if record else None
 
-    # ステータス表示
     c1, c2 = st.columns(2)
     c1.metric("出勤時刻", clock_in if clock_in else "--:--")
     c2.metric("退勤時刻", clock_out if clock_out else "--:--")
 
     st.divider()
 
-    # カメラとボタン
     photo = st.camera_input("認証用写真撮影", label_visibility="collapsed")
     photo_b64 = None
     if photo:
@@ -214,7 +199,6 @@ def staff_dashboard():
             elif clock_in:
                 st.warning("すでに出勤しています")
             else:
-                # 新規ドキュメント作成
                 db.collection('attendance').add({
                     'employee_id': st.session_state['user_id'],
                     'date': today,
@@ -260,14 +244,9 @@ def staff_dashboard():
             else:
                 st.warning("操作できません")
 
-    # 簡易給与概算（スタッフ向け）
     with st.expander("今月の概算給与"):
         emp = get_employee_by_id(st.session_state['user_id'])
         current_month = datetime.datetime.now().strftime("%Y-%m")
-        
-        # クエリ: 今月のデータを取得 (文字列比較)
-        # Note: 文字列日付の範囲検索は簡易実装です。厳密にはTimestamp型推奨ですが、
-        # 仕様のシンプルさを優先してYYYY-MM-DD文字列でフィルタします。
         start_m = current_month + "-01"
         end_m = current_month + "-31"
         
@@ -284,7 +263,7 @@ def staff_dashboard():
                 t1 = datetime.datetime.strptime(d['clock_in'], "%H:%M")
                 t2 = datetime.datetime.strptime(d['clock_out'], "%H:%M")
                 hours = (t2 - t1).seconds / 3600
-                work_hours += max(0, hours - 1) # 休憩1時間控除仮定
+                work_hours += max(0, hours - 1)
         
         est_pay = 0
         if emp['salary_type'] == '月給':
@@ -297,11 +276,10 @@ def staff_dashboard():
         else:
             st.metric("概算給与", "***** 円")
 
-
 # --- 画面: 管理者機能 ---
 def admin_dashboard():
     st.title("管理者ダッシュボード 🛠️")
-    menu = st.sidebar.radio("メニュー", ["👥 スタッフ管理", "📊 勤怠集計", "⚙️ システム設定"])
+    menu = st.sidebar.radio("メニュー", ["👥 スタッフ管理", "✏️ 勤怠修正", "📊 勤怠集計", "⚙️ システム設定"])
 
     if menu == "👥 スタッフ管理":
         st.subheader("スタッフ登録")
@@ -336,16 +314,84 @@ def admin_dashboard():
         emps = get_all_employees()
         if emps:
             df = pd.DataFrame(emps)
-            # 表示用にカラム整理
             st.dataframe(df[['name', 'employee_type', 'salary_type', 'id']])
-            
-            # 削除機能
             del_id = st.selectbox("削除対象ID", [e['id'] for e in emps])
             if st.button("選択したスタッフを削除"):
                 db.collection('employees').document(del_id).delete()
                 st.warning("削除しました")
                 time.sleep(1)
                 st.rerun()
+
+    elif menu == "✏️ 勤怠修正":
+        st.subheader("勤怠データの修正・追加")
+        st.info("スタッフと日付を選択して、打刻時間を修正できます。")
+
+        # スタッフと日付の選択
+        emps = get_all_employees()
+        if emps:
+            c1, c2 = st.columns(2)
+            selected_emp_id = c1.selectbox("スタッフ選択", [e['id'] for e in emps], format_func=lambda x: next(e['name'] for e in emps if e['id'] == x))
+            selected_date = c2.date_input("日付選択", value=datetime.date.today())
+            date_str = str(selected_date)
+
+            # 既存データの取得
+            record = get_attendance(selected_emp_id, date_str)
+            
+            # デフォルト値の設定
+            def_in = datetime.time(9, 0)
+            def_out = datetime.time(18, 0)
+            def_b_start = None
+            def_b_end = None
+            
+            doc_id = None
+            
+            if record:
+                st.write("📝 データが見つかりました。修正します。")
+                doc_id = record['doc_id']
+                if record.get('clock_in'):
+                    def_in = datetime.datetime.strptime(record['clock_in'], "%H:%M").time()
+                if record.get('clock_out'):
+                    def_out = datetime.datetime.strptime(record['clock_out'], "%H:%M").time()
+                if record.get('break_start'):
+                    def_b_start = datetime.datetime.strptime(record['break_start'], "%H:%M").time()
+                if record.get('break_end'):
+                    def_b_end = datetime.datetime.strptime(record['break_end'], "%H:%M").time()
+            else:
+                st.warning("⚠️ この日のデータはありません。新規作成しますか？")
+
+            # 修正フォーム
+            with st.form("edit_attendance"):
+                tc1, tc2 = st.columns(2)
+                new_in = tc1.time_input("出勤時間", value=def_in)
+                new_out = tc2.time_input("退勤時間", value=def_out)
+                
+                tc3, tc4 = st.columns(2)
+                new_b_start = tc3.time_input("休憩開始", value=def_b_start)
+                new_b_end = tc4.time_input("休憩終了", value=def_b_end)
+                
+                # 保存処理
+                if st.form_submit_button("保存する"):
+                    data = {
+                        'clock_in': new_in.strftime("%H:%M"),
+                        'clock_out': new_out.strftime("%H:%M"),
+                        'break_start': new_b_start.strftime("%H:%M") if new_b_start else None,
+                        'break_end': new_b_end.strftime("%H:%M") if new_b_end else None,
+                        'date': date_str,
+                        'employee_id': selected_emp_id
+                    }
+                    
+                    if doc_id:
+                        # 更新
+                        db.collection('attendance').document(doc_id).update(data)
+                        st.success("データを更新しました！")
+                    else:
+                        # 新規作成（押し忘れ対応）
+                        data['created_at'] = firestore.SERVER_TIMESTAMP
+                        db.collection('attendance').add(data)
+                        st.success("データを新規作成しました！")
+                    
+                    time.sleep(1)
+                    st.rerun()
 
     elif menu == "📊 勤怠集計":
         st.subheader("データ出力")
@@ -354,16 +400,8 @@ def admin_dashboard():
         end_d = d2.date_input("終了", value=datetime.date.today())
         
         if st.button("集計実行"):
-            # 日付範囲でフィルタ
-            # 注意: Firestoreで複数のフィールド('date'と'employee_id'等)でフィルタする場合、
-            # 複合インデックスが必要になることがあります。
-            # 今回はシンプルに全件取得してからPandasで処理する方式が、
-            # データ量が少ないうちは最も安定します。
-            
             all_logs = db.collection('attendance').stream()
             data_list = []
-            
-            # 全スタッフマスタ取得
             emp_map = {e['id']: e for e in get_all_employees()}
             
             for doc in all_logs:
@@ -378,6 +416,8 @@ def admin_dashboard():
                             '日付': d['date'],
                             '出勤': d.get('clock_in'),
                             '退勤': d.get('clock_out'),
+                            '休憩開始': d.get('break_start'),
+                            '休憩終了': d.get('break_end'),
                             '給与形態': emp['salary_type'],
                             '時給/月給': emp['salary']
                         })
@@ -387,20 +427,16 @@ def admin_dashboard():
             else:
                 df_res = pd.DataFrame(data_list)
                 st.dataframe(df_res)
-                
-                # Excel出力
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     df_res.to_excel(writer, sheet_name='勤怠', index=False)
                 output.seek(0)
-                
                 st.download_button("Excelダウンロード", data=output, file_name="attendance.xlsx")
 
     elif menu == "⚙️ システム設定":
         st.info("Firestoreを使用しているため、データはクラウドに永続化されています。")
         new_p = st.text_input("管理者パスワード変更", type="password")
         if st.button("変更"):
-            # adminドキュメントを探して更新
             docs = db.collection('admins').where('username', '==', 'admin').stream()
             for doc in docs:
                 db.collection('admins').document(doc.id).update({
