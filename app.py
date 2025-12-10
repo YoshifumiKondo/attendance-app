@@ -176,7 +176,7 @@ def style_setup():
 
 # --- 画面: 認証 ---
 def login_screen():
-    st.title("勤怠管理アプリ 🍩") # アイコン変更
+    st.title("勤怠管理アプリ 🍩")
     
     admins = db.collection('admins').limit(1).stream()
     if not list(admins):
@@ -191,7 +191,7 @@ def login_screen():
             time.sleep(2)
             st.rerun()
 
-    tab1, tab2 = st.tabs(["🐣 スタッフ", "🔧 管理者"]) # 絵文字追加
+    tab1, tab2 = st.tabs(["🐣 スタッフ", "🔧 管理者"])
     
     with tab1:
         st.header("さあ、はじめましょう！")
@@ -203,7 +203,6 @@ def login_screen():
             selected_name = st.selectbox("お名前を選んでください", emp_names)
             pin = st.text_input("暗証番号 (4桁)", type="password", key="staff_pin", max_chars=4)
             
-            # レイアウト調整用
             c1, c2, c3 = st.columns([1, 2, 1])
             with c2:
                 if st.button("スタート ▶︎", key="staff_login_btn"):
@@ -247,22 +246,20 @@ def staff_dashboard():
     break_end = record.get('break_end') if record else None
     doc_id = record.get('doc_id') if record else None
 
-    # ステータス表示
     st.markdown("### 📅 今日のステータス")
     c1, c2 = st.columns(2)
     c1.metric("出勤時刻", clock_in if clock_in else "--:--")
     c2.metric("退勤時刻", clock_out if clock_out else "--:--")
 
-    st.write("") # スペース
+    st.write("")
 
     photo = st.camera_input("認証用写真撮影", label_visibility="collapsed")
     photo_b64 = None
     if photo:
         photo_b64 = base64.b64encode(photo.getvalue()).decode()
 
-    st.write("") # スペース
+    st.write("")
 
-    # ボタンレイアウト
     col1, col2 = st.columns(2)
     col3, col4 = st.columns(2)
     
@@ -391,6 +388,18 @@ def admin_dashboard():
         if emps:
             df = pd.DataFrame(emps)
             st.dataframe(df[['name', 'employee_type', 'salary_type', 'id']])
+            
+            # --- 従業員マスタのエクスポート機能 ---
+            output_emp = BytesIO()
+            with pd.ExcelWriter(output_emp, engine='openpyxl') as writer:
+                # 必要なカラムのみを選択して出力（idやpinは管理用として出力）
+                export_cols = ['id', 'name', 'birth_date', 'employee_type', 'salary_type', 'salary', 'transportation', 'pin']
+                valid_cols = [c for c in export_cols if c in df.columns]
+                df[valid_cols].to_excel(writer, sheet_name='従業員マスタ', index=False)
+            output_emp.seek(0)
+            st.download_button("従業員マスタ Excel出力", data=output_emp, file_name="employee_master.xlsx")
+            # ------------------------------------
+
             del_id = st.selectbox("削除対象ID", [e['id'] for e in emps])
             if st.button("選択したスタッフを削除"):
                 db.collection('employees').document(del_id).delete()
@@ -476,21 +485,28 @@ def admin_dashboard():
                 if start_d <= log_date <= end_d:
                     emp = emp_map.get(d['employee_id'])
                     if emp:
+                        # 日付を年、月、日に分割
+                        ymd = d['date'].split('-')
                         data_list.append({
                             '名前': emp['name'],
-                            '日付': d['date'],
+                            '年': int(ymd[0]),
+                            '月': int(ymd[1]),
+                            '日': int(ymd[2]),
                             '出勤': d.get('clock_in'),
                             '退勤': d.get('clock_out'),
                             '休憩開始': d.get('break_start'),
                             '休憩終了': d.get('break_end'),
-                            '給与形態': emp['salary_type'],
-                            '時給/月給': emp['salary']
+                            '給与形態': emp['salary_type']
+                            # 時給・月給は出力しない
                         })
             
             if not data_list:
                 st.warning("対象期間のデータがありません")
             else:
-                df_res = pd.DataFrame(data_list)
+                # カラム順序の指定
+                cols = ['名前', '年', '月', '日', '出勤', '退勤', '休憩開始', '休憩終了', '給与形態']
+                df_res = pd.DataFrame(data_list, columns=cols)
+                
                 st.dataframe(df_res)
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
