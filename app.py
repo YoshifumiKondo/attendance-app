@@ -193,8 +193,6 @@ def generate_monthly_report_excel(employee_data, year, month, records):
     border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     fill_header = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
     
-    # 全体フォント設定（個別セル適用）
-
     # --- ヘッダー部 ---
     # タイトル
     ws.merge_cells('A1:X1')
@@ -341,7 +339,8 @@ def generate_monthly_report_excel(employee_data, year, month, records):
          ws.column_dimensions[c].width = 10
     
     return wb
-    # --- UIスタイル ---
+
+# --- UIスタイル ---
 def style_setup():
     st.markdown("""
     <style>
@@ -667,18 +666,18 @@ def admin_dashboard():
             else:
                 st.warning("データがありません")
             
-            # Excel出力ボタン
-            if st.button("📥 勤務表をExcelでダウンロード"):
-                wb = generate_monthly_report_excel(target_emp, start_date.year, start_date.month, records)
-                out = BytesIO()
-                wb.save(out)
-                out.seek(0)
-                st.download_button(
-                    label="Excelファイルを保存",
-                    data=out,
-                    file_name=f"勤怠管理表_{sel_name}_{start_date.month}月.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+            # Excel出力ボタン（エラー回避修正済み：自動生成して配置）
+            wb = generate_monthly_report_excel(target_emp, start_date.year, start_date.month, records)
+            out = BytesIO()
+            wb.save(out)
+            out.seek(0)
+            
+            st.download_button(
+                label="📥 勤務表をExcelでダウンロード",
+                data=out,
+                file_name=f"勤怠管理表_{sel_name}_{start_date.month}月.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
     elif menu == "✏️ 勤怠修正":
         st.subheader("勤怠データの修正・追加")
