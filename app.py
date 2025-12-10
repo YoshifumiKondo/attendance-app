@@ -217,8 +217,6 @@ def generate_monthly_report_excel(employee_data, year, month, records):
         ws[cell].font = font_body
 
     # --- テーブルヘッダー (2段組み・結合) ---
-    # A7-X8 の範囲を作成
-    
     headers_def = [
         ('A7:A8', '日付'), ('B7:B8', '曜日'), 
         ('C7:E7', '就業時間'), 
@@ -457,6 +455,7 @@ def staff_dashboard():
     today = get_today_str()
     record = get_attendance_today(st.session_state['user_id'], today)
     
+    # recordがNoneの場合の対策
     clock_in = record.get('clock_in') if record else None
     clock_out = record.get('clock_out') if record else None
     break_start = record.get('break_start') if record else None
@@ -554,10 +553,10 @@ def staff_dashboard():
             work_hours += net
         
         est_pay = 0
-        if emp['salary_type'] == '月給':
-            est_pay = emp['salary']
-        else:
-            est_pay = int(work_hours * emp['salary'])
+        if emp and emp.get('salary_type') == '月給':
+            est_pay = emp.get('salary', 0)
+        elif emp:
+            est_pay = int(work_hours * emp.get('salary', 0))
             
         if st.checkbox("金額を表示する"):
             st.metric("概算給与", f"{est_pay:,} 円")
@@ -567,7 +566,6 @@ def staff_dashboard():
 # --- 画面: 管理者機能 ---
 def admin_dashboard():
     st.title("管理者ダッシュボード 🛠️")
-    # メニュー追加: 「👤 個人実績・出力」
     menu = st.sidebar.radio("メニュー", ["👥 スタッフ管理", "👤 個人実績・出力", "✏️ 勤怠修正", "📊 全体集計", "⚙️ システム設定"])
 
     if menu == "👥 スタッフ管理":
@@ -666,7 +664,7 @@ def admin_dashboard():
             else:
                 st.warning("データがありません")
             
-            # Excel出力ボタン（エラー回避修正済み：自動生成して配置）
+            # Excel出力ボタン
             wb = generate_monthly_report_excel(target_emp, start_date.year, start_date.month, records)
             out = BytesIO()
             wb.save(out)
